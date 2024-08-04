@@ -1,0 +1,38 @@
+{
+    "name": "siberfx/laravel-tryoto",
+    "type": "library",
+    "description": "tryoto.com unofficial api integration using laravel http client.",
+    "keywords": [
+        "siberfx",
+        "tryoto",
+        "cargo integration",
+        "shipment automation",
+        "shipment integration"
+    ],
+    "homepage": "https://github.com/siberfx/laravel-tryoto",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Selim Görmüş",
+            "email": "info@siberfx.com",
+            "homepage": "https://siberfx.com",
+            "role": "Maintainer"
+        }
+    ],
+    "require": {
+        "php": "^8.2||^8.3",
+        "laravel/framework": "^10.40|^11.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Siberfx\\LaravelTryoto\\": "src"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Siberfx\\LaravelTryoto\\TryotoServiceProvider"
+            ]
+        }
+    }
+}
