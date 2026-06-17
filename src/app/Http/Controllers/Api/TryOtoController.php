@@ -25,14 +25,29 @@ class TryOtoController
         return $this->service->cancelOrder($orderId);
     }
 
+    public function holdOrder($orderId, string $reason = '', string $reasonLang = 'en')
+    {
+        return $this->service->holdOrder($orderId, $reason, $reasonLang);
+    }
+
+    public function unHoldOrder($orderId)
+    {
+        return $this->service->unHoldOrder($orderId);
+    }
+
+    public function updateOrderStatus($orderIds, string $status, string $description = '', ?string $date = null)
+    {
+        return $this->service->updateOrderStatus($orderIds, $status, $description, $date);
+    }
+
     public function orderDetail($orderId = 'OID-60774-1001')
     {
         return $this->service->orderDetail($orderId);
     }
 
-    public function orderList()
+    public function orderList(int $page = 1, array $filters = [])
     {
-        return $this->service->listOrders();
+        return $this->service->listOrders($page, $filters);
     }
 
 

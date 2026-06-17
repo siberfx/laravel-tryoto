@@ -51,15 +51,17 @@ class TryotoService
     }
 
 
-    public function listOrders(int $page = 1)
+    public function listOrders(int $page = 1, array $filters = [])
     {
+        $query = array_merge([
+            'perPage' => 100,
+            'page' => $page,
+        ], array_filter($filters, static fn ($value) => $value !== null && $value !== ''));
+
         $response = Http::withHeaders([
             'Authorization' => $this->accessToken
         ])
-            ->get($this->url . '/rest/v2/getAllOrders', [
-                'perPage' => 100,
-                'page' => $page,
-            ]);
+            ->get($this->url . '/rest/v2/orders', $query);
 
         return json_decode($response->body());
     }
@@ -86,13 +88,81 @@ class TryotoService
         }
 
         $response = Http::withHeaders([
-            'Authorization' => $this->accessToken
+            'Authorization' => $this->accessToken,
+            'Accept' => 'application/json',
         ])
-            ->get($this->url . '/rest/v2/cancelOrder', [
+            ->post($this->url . '/rest/v2/cancelOrder', [
                 'orderId' => $orderId
             ]);
 
-        return $response->body();
+        return $response->json();
+    }
+
+
+    public function holdOrder($orderId, string $reason = '', string $reasonLang = 'en')
+    {
+        if (empty($orderId)) {
+            return [];
+        }
+
+        $response = Http::withHeaders([
+            'Authorization' => $this->accessToken,
+            'Accept' => 'application/json',
+        ])
+            ->post($this->url . '/rest/v2/holdOrder', [
+                'orderId' => $orderId,
+                'onHoldReason' => $reason,
+                'onHoldReasonLang' => $reasonLang,
+            ]);
+
+        return $response->json();
+    }
+
+
+    public function unHoldOrder($orderId)
+    {
+        if (empty($orderId)) {
+            return [];
+        }
+
+        $response = Http::withHeaders([
+            'Authorization' => $this->accessToken,
+            'Accept' => 'application/json',
+        ])
+            ->post($this->url . '/rest/v2/unHoldOrder', [
+                'orderId' => $orderId,
+            ]);
+
+        return $response->json();
+    }
+
+
+    public function updateOrderStatus($orderIds, string $status, string $description = '', ?string $date = null)
+    {
+        if (empty($orderIds) || $status === '') {
+            return [];
+        }
+
+        $body = [
+            'orderIds' => $orderIds,
+            'status' => $status,
+        ];
+
+        if ($description !== '') {
+            $body['description'] = $description;
+        }
+
+        if (!empty($date)) {
+            $body['date'] = $date;
+        }
+
+        $response = Http::withHeaders([
+            'Authorization' => $this->accessToken,
+            'Accept' => 'application/json',
+        ])
+            ->post($this->url . '/rest/v2/updateOrderStatus', $body);
+
+        return $response->json();
     }
 
 
