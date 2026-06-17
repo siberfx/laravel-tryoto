@@ -12,11 +12,11 @@ class TryotoService
     private string $accessToken;
     private string $_webhook;
     private string $cacheName;
-    private string $cacheTime;
+    private int $cacheTime;
 
     public function __construct()
     {
-        if (!config('services.tryoto.sandbox')) {
+        if (!config('laravel-tryoto.tryoto.sandbox')) {
             $this->url = config('laravel-tryoto.tryoto.live.url');
             $this->_token = config('laravel-tryoto.tryoto.live.token');
             $this->_webhook = route('tryoto.callback'); // comes from package route.
@@ -25,14 +25,14 @@ class TryotoService
             $this->_token = config('laravel-tryoto.tryoto.test.token');
             $this->_webhook = 'https://request-dinleyici-url-buraya-yazilmali';
         }
-        $this->cacheName = config('laravel-tryoto.cache_name');
-        $this->cacheTime = config('laravel-tryoto.cache_time');
+        $this->cacheName = config('laravel-tryoto.tryoto.cache_name');
+        $this->cacheTime = (int) config('laravel-tryoto.tryoto.cache_time');
 
         $this->accessToken = $this->authorize();
     }
 
 
-    public function authorize()
+    public function authorize(): string
     {
 
         if (Cache::has($this->cacheName)) {
@@ -51,16 +51,15 @@ class TryotoService
     }
 
 
-    public function listOrders($page = 1)
+    public function listOrders(int $page = 1)
     {
         $response = Http::withHeaders([
-            'Authorization' => $this->_token
+            'Authorization' => $this->accessToken
         ])
-            ->withUrlParameters([
+            ->get($this->url . '/rest/v2/getAllOrders', [
                 'perPage' => 100,
-                'page' => $page
-            ])
-            ->get($this->url . '/rest/v2/getAllOrders');
+                'page' => $page,
+            ]);
 
         return json_decode($response->body());
     }
