@@ -107,6 +107,20 @@ describe('signature verification', function () {
         'empty secret' => [fn () => signedPayload(''), ''],
     ]);
 
+    it('signs wallet transactions with transactionStatus', function () {
+        $payload = ['orderId' => 'OID-1', 'transactionStatus' => 'completed', 'timestamp' => 1767011253000];
+        $payload['signature'] = base64_encode(hash_hmac('sha256', 'OID-1:completed:1767011253000', 'secret', true));
+
+        expect(TryotoService::verifyWebhookSignature($payload, 'secret'))->toBeTrue();
+    });
+
+    it('signs new orders with the nested order id and status', function () {
+        $payload = ['order' => ['incrementId' => 'OID-9', 'status' => 'assignedToWarehouse'], 'timestamp' => 1742822768001];
+        $payload['signature'] = base64_encode(hash_hmac('sha256', 'OID-9:assignedToWarehouse:1742822768001', 'secret', true));
+
+        expect(TryotoService::verifyWebhookSignature($payload, 'secret'))->toBeTrue();
+    });
+
     it('signs payloads without a status (shipmentError)', function () {
         $payload = signedPayload('secret', ['status' => '']);
         unset($payload['status']);

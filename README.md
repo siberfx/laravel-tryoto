@@ -34,6 +34,7 @@ and webhooks.
   - [Coverage, cities and addresses](#coverage-cities-and-addresses)
   - [Any other endpoint](#any-other-endpoint)
 - [Webhooks](#webhooks)
+- [Notifications: Slack, Telegram and email](#notifications-slack-telegram-and-email)
 - [Error handling](#error-handling)
 - [Endpoint reference](#endpoint-reference)
 - [Testing your application](#testing-your-application)
@@ -50,15 +51,17 @@ and webhooks.
 - **Token handling:** the refresh token is exchanged for an access token on first use, the access token is cached, and a `401` triggers one refresh and retry.
 - **Sandbox switch:** one env flag moves every call to OTO's staging API, with its own token cache.
 - **Webhooks:** register, list, update and delete them from code. The bundled callback route checks the authorization key and signature, then fires a Laravel event.
+- **Notifications:** forward webhook events to Slack, Telegram and/or email, filtered by type or status and optionally queued. Off by default, and needs no extra packages.
 - **Escape hatch:** `call()` / `request()` reach any endpoint with the same authentication.
 - **Tested:** a Pest suite checks each wrapper's HTTP method, path, query and body against the docs. CI runs PHP 8.4/8.5 against Laravel 12/13.
 
 ## Requirements
 
-| Package | PHP       | Laravel    |
-| ------- | --------- | ---------- |
-| 2.x     | 8.4, 8.5  | 12.x, 13.x |
-| 1.x     | 8.2, 8.3  | 10.x, 11.x |
+| Package | PHP       | Laravel    | Supported |
+| ------- | --------- | ---------- | --------- |
+| 3.x     | 8.4, 8.5  | 12.x, 13.x | Yes       |
+| 2.x     | 8.4, 8.5  | 12.x, 13.x | No        |
+| 1.x     | 8.2, 8.3  | 10.x, 11.x | No        |
 
 ## Installation
 
@@ -108,6 +111,28 @@ All options in `config/laravel-tryoto.php`:
 | `tryoto.webhook.verify_signature`  | `TRYOTO_WEBHOOK_VERIFY_SIGNATURE`  | `false`                          | Reject incoming calls whose signature does not match `secret_key`.          |
 | `tryoto.webhook.timestamp_format`  | —                                  | `yyyy-MM-dd HH:mm:ss`            | Timestamp format OTO uses in payloads.                                      |
 | `tryoto.webhook.order_prefix`      | —                                  | `''`                             | Prefix OTO strips from order ids before sending the webhook.                |
+
+Notification options (`tryoto.notifications.*`). Everything defaults to `null`, so no notification is sent until you set credentials:
+
+| Key                                     | Env variable                             | Default                    | Description                                                              |
+| --------------------------------------- | ---------------------------------------- | -------------------------- | ------------------------------------------------------------------------ |
+| `notifications.locale`                  | `TRYOTO_NOTIFICATIONS_LOCALE`            | `en`                       | Message language: `en` or `tr`. Other locales fall back to English.        |
+| `notifications.types`                   | —                                        | `null`                     | `null` for all webhook types, or e.g. `['orderStatus', 'shipmentError']`. |
+| `notifications.statuses`                | —                                        | `null`                     | `null` for all order statuses, or e.g. `['delivered', 'returned']`.       |
+| `notifications.queue`                   | `TRYOTO_NOTIFICATIONS_QUEUE`             | `null`                     | Queue name. `null` sends during the webhook request.                      |
+| `notifications.queue_connection`        | `TRYOTO_NOTIFICATIONS_QUEUE_CONNECTION`  | `null`                     | Queue connection. `null` uses the default.                                |
+| `notifications.slack.webhook_url`       | `TRYOTO_SLACK_WEBHOOK_URL`               | `null`                     | Slack incoming webhook URL. Setting it enables Slack.                     |
+| `notifications.slack.channel`           | `TRYOTO_SLACK_CHANNEL`                   | `null`                     | Channel override (legacy webhooks only).                                  |
+| `notifications.slack.username`          | `TRYOTO_SLACK_USERNAME`                  | `null`                     | Bot name override (legacy webhooks only).                                 |
+| `notifications.telegram.bot_token`      | `TRYOTO_TELEGRAM_BOT_TOKEN`              | `null`                     | Bot token from @BotFather. Set it with `chat_id` to enable Telegram.      |
+| `notifications.telegram.chat_id`        | `TRYOTO_TELEGRAM_CHAT_ID`                | `null`                     | User, group or channel id.                                                |
+| `notifications.telegram.thread_id`      | `TRYOTO_TELEGRAM_THREAD_ID`              | `null`                     | Forum topic id (optional).                                                |
+| `notifications.telegram.api_url`        | `TRYOTO_TELEGRAM_API_URL`                | `https://api.telegram.org` | For self-hosted Bot API servers.                                          |
+| `notifications.mail.to`                 | `TRYOTO_MAIL_TO`                         | `null`                     | Recipients, comma separated or an array. Setting it enables email.        |
+| `notifications.mail.mailer`             | `TRYOTO_MAIL_MAILER`                     | `null`                     | Mailer from `config/mail.php`. `null` uses the default.                   |
+| `notifications.mail.from_address`       | `TRYOTO_MAIL_FROM_ADDRESS`               | `null`                     | Sender address. `null` uses `mail.from.address`.                          |
+| `notifications.mail.from_name`          | `TRYOTO_MAIL_FROM_NAME`                  | `null`                     | Sender name. `null` uses `mail.from.name`.                                |
+| `notifications.mail.subject_prefix`     | `TRYOTO_MAIL_SUBJECT_PREFIX`             | `[OTO]`                    | Prepended to the subject, which is the message title.                     |
 
 ## Quick start
 
@@ -343,6 +368,124 @@ To verify a signature yourself, for example in your own route:
 
 ```php
 TryotoService::verifyWebhookSignature($request->all(), config('laravel-tryoto.tryoto.webhook.secret_key'));
+```
+
+## Notifications: Slack, Telegram and email
+
+Accepted webhook calls can be forwarded to Slack, Telegram and email. Every channel is off until its credentials are
+set; leave them `null` if you don't need notifications.
+
+```dotenv
+# Slack: create an incoming webhook at https://api.slack.com/messaging/webhooks
+TRYOTO_SLACK_WEBHOOK_URL=https://hooks.slack.com/services/T000/B000/XXXX
+
+# Telegram: create a bot with @BotFather and add it to your chat
+TRYOTO_TELEGRAM_BOT_TOKEN=123456:ABC-DEF
+TRYOTO_TELEGRAM_CHAT_ID=-1001234567890
+
+# Email: uses your app's Laravel mailer (config/mail.php)
+TRYOTO_MAIL_TO=ops@shop.test,owner@shop.test
+
+# optional: send from a queue worker instead of during the webhook request
+TRYOTO_NOTIFICATIONS_QUEUE=notifications
+
+# optional: message language, en (default) or tr
+TRYOTO_NOTIFICATIONS_LOCALE=tr
+```
+
+Each webhook type gets its own message:
+
+| Webhook type        | Example message                                                              |
+| ------------------- | ---------------------------------------------------------------------------- |
+| `orderStatus`       | **✅ Order 1234 is delivered** · Carrier: aramex · Tracking number · tracking link |
+| `shipmentError`     | **⚠️ Shipment error for order 7523** · Error · Code · Carrier response        |
+| `newOrders`         | **🆕 New order OID-23331-1035** · Status · Total · Payment · Customer · Items |
+| `walletTransaction` | **💳 Wallet transaction -29** · Order · Type · Status · Remaining balance     |
+
+Limit what gets sent in `config/laravel-tryoto.php`:
+
+```php
+'notifications' => [
+    'types' => ['orderStatus', 'shipmentError'],  // null = all types
+    'statuses' => ['delivered', 'returned'],      // null = all statuses (orderStatus only)
+    // ...
+],
+```
+
+Emails are HTML, with the same title, fields and tracking button as the chat messages. The subject is
+the message title, e.g. `[OTO] ✅ Order 1234 is delivered`.
+
+A failing channel is passed to Laravel's exception handler with `report()`. It doesn't stop the
+other channels and doesn't change the response sent to OTO.
+
+### Languages
+
+Messages are in English by default. Set `TRYOTO_NOTIFICATIONS_LOCALE=tr` to send them in Turkish:
+
+| Locale | Example title                            | Field labels                         |
+| ------ | ---------------------------------------- | ------------------------------------ |
+| `en`   | ✅ Order 1234 is delivered               | Status, Carrier, Tracking number     |
+| `tr`   | ✅ 1234 numaralı sipariş: teslim edildi  | Durum, Kargo firması, Takip numarası |
+
+The language is set by this setting only, not by the app's `app.locale`, so notifications stay
+the same language no matter which user triggered them. Known OTO status codes (`delivered`,
+`outForDelivery`, `pickedUp`, ...) get readable names in the title. Unknown codes are shown as
+sent, and the `Status` field always shows the raw code.
+
+To change the wording or add another language, publish the language files:
+
+```bash
+php artisan vendor:publish --provider="Siberfx\LaravelTryoto\TryotoServiceProvider" --tag=lang
+```
+
+This copies them to `lang/vendor/tryoto/{en,tr}/notifications.php`. Add e.g.
+`lang/vendor/tryoto/de/notifications.php` and set the locale to `de`. Any line missing from a
+translation falls back to English.
+
+You can also pick the language per message:
+
+```php
+TryotoMessage::fromWebhook($payload, 'tr');
+TryotoMessage::make('Günlük rapor', 'tr')->field('Kargolanan', 42);
+```
+
+### Sending your own messages
+
+```php
+use Siberfx\LaravelTryoto\app\Notifications\TryotoMessage;
+use Siberfx\LaravelTryoto\app\Notifications\TryotoNotifier;
+
+app(TryotoNotifier::class)->send(
+    TryotoMessage::make('📦 Daily shipping report')
+        ->field('Shipped', 42)
+        ->field('Delivered', 37)
+        ->link('https://app.tryoto.com', 'Open OTO')
+);
+```
+
+### Custom channels
+
+Implement `NotificationChannel` and register it, for example in `AppServiceProvider::boot()`:
+
+```php
+use Siberfx\LaravelTryoto\app\Notifications\Channels\NotificationChannel;
+use Siberfx\LaravelTryoto\app\Notifications\TryotoMessage;
+use Siberfx\LaravelTryoto\app\Notifications\TryotoNotifier;
+
+class DiscordChannel implements NotificationChannel
+{
+    public function isConfigured(): bool
+    {
+        return filled(config('services.discord.webhook'));
+    }
+
+    public function send(TryotoMessage $message): void
+    {
+        Http::post(config('services.discord.webhook'), ['content' => $message->title])->throw();
+    }
+}
+
+app(TryotoNotifier::class)->extend('discord', new DiscordChannel());
 ```
 
 ## Error handling

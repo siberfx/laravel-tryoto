@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-10-05
+
+### Added
+
+- Slack, Telegram and email notifications for incoming webhooks (`TryotoNotifier`, `SlackChannel`, `TelegramChannel`, `MailChannel`), with no extra dependencies:
+  - every channel is disabled while its credentials are `null` (the default);
+  - email goes through the app's Laravel mailer as an HTML `TryotoNotificationMail`, with configurable recipients, mailer, sender and subject prefix;
+  - optional `types` / `statuses` filters and queueing (`queue`, `queue_connection`) via the `SendTryotoNotification` job;
+  - a separate message for each webhook type (`orderStatus`, `shipmentError`, `newOrders`, `walletTransaction`);
+  - `TryotoMessage` for sending your own messages, and `TryotoNotifier::extend()` for custom channels;
+  - messages in English (default) or Turkish via `notifications.locale`, with publishable `tryoto::notifications` language files (`--tag=lang`) and English fallback for other locales;
+  - a failing channel is reported and doesn't block the others or the webhook response.
+- `TryotoWebhookReceived::type()` / `detectType()` and type constants.
+- Tests for notifications and localization (168 tests in total).
+
+### Changed
+
+- The `TRYOTO_REFRESH_TOKEN` / `TRYOTO_TEST_REFRESH_TOKEN` config defaults are `null` instead of placeholder strings.
+- `SECURITY.md`: only 3.x receives security fixes.
+
+### Fixed
+
+- `verifyWebhookSignature()` now handles `walletTransaction` payloads (signed with `transactionStatus`) and `newOrders` payloads (order id and status nested under `order`).
+
+## [3.0.0] - 2026-10-05
+
 ### Added
 
 - Wrappers for every documented OTO API v2 endpoint group, split into traits under `src/app/Services/Concerns`:
@@ -84,7 +110,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Initial release: `TryotoService` with token caching, `listOrders()`, `orderDetail()`, `createOrder()`, `updateOrder()`, `cancelOrder()` and `setWebhook()`, a sample controller and the webhook callback route.
 
-[Unreleased]: https://github.com/siberfx/laravel-tryoto/compare/2.0.0...HEAD
+[Unreleased]: https://github.com/siberfx/laravel-tryoto/compare/3.1.0...HEAD
+[3.1.0]: https://github.com/siberfx/laravel-tryoto/compare/3.0.0...3.1.0
+[3.0.0]: https://github.com/siberfx/laravel-tryoto/compare/2.0.0...3.0.0
 [2.0.0]: https://github.com/siberfx/laravel-tryoto/compare/1.0.1...2.0.0
 [1.0.1]: https://github.com/siberfx/laravel-tryoto/compare/1.0.0...1.0.1
 [1.0.0]: https://github.com/siberfx/laravel-tryoto/releases/tag/1.0.0

@@ -57,6 +57,9 @@ trait ManagesWebhooks
     /**
      * Check an incoming payload's signature: OTO signs "orderId:status:timestamp" with
      * HmacSHA256 using the webhook's secretKey and Base64 encodes the result.
+     *
+     * walletTransaction payloads sign transactionStatus in place of status, and newOrders
+     * payloads carry the order id and status inside "order" (incrementId / status).
      */
     public static function verifyWebhookSignature(array $payload, string $secretKey): bool
     {
@@ -66,9 +69,11 @@ trait ManagesWebhooks
             return false;
         }
 
+        $order = is_array($payload['order'] ?? null) ? $payload['order'] : [];
+
         $message = implode(':', [
-            $payload['orderId'] ?? '',
-            $payload['status'] ?? '',
+            $payload['orderId'] ?? $order['incrementId'] ?? '',
+            $payload['status'] ?? $payload['transactionStatus'] ?? $order['status'] ?? '',
             $payload['timestamp'] ?? '',
         ]);
 
