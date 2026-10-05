@@ -1,2 +1,7 @@
 .idea
 .composer.lock
+vendor
+.cursor
+.superpowers
+docs
+.claude
