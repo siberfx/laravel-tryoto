@@ -2,207 +2,154 @@
 
 namespace Siberfx\LaravelTryoto\app\Services;
 
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
+use Siberfx\LaravelTryoto\app\Exceptions\TryotoException;
+use Siberfx\LaravelTryoto\app\Services\Concerns\ManagesAccount;
+use Siberfx\LaravelTryoto\app\Services\Concerns\ManagesLocations;
+use Siberfx\LaravelTryoto\app\Services\Concerns\ManagesOrders;
+use Siberfx\LaravelTryoto\app\Services\Concerns\ManagesPickupLocations;
+use Siberfx\LaravelTryoto\app\Services\Concerns\ManagesProducts;
+use Siberfx\LaravelTryoto\app\Services\Concerns\ManagesReturns;
+use Siberfx\LaravelTryoto\app\Services\Concerns\ManagesShipments;
+use Siberfx\LaravelTryoto\app\Services\Concerns\ManagesStock;
+use Siberfx\LaravelTryoto\app\Services\Concerns\ManagesWebhooks;
 
+/**
+ * Client for the OTO REST API v2 (https://apis.tryoto.com).
+ *
+ * Endpoints are grouped into traits under Concerns/, mirroring the sections of the official
+ * documentation. Anything not wrapped there can still be reached through request()/call().
+ */
 class TryotoService
 {
+    use ManagesAccount;
+    use ManagesLocations;
+    use ManagesOrders;
+    use ManagesPickupLocations;
+    use ManagesProducts;
+    use ManagesReturns;
+    use ManagesShipments;
+    use ManagesStock;
+    use ManagesWebhooks;
+
     private string $url;
     private string $_token;
-    private string $accessToken;
-    private string $_webhook;
+    private ?string $accessToken = null;
     private string $cacheName;
     private int $cacheTime;
+    private int $timeout;
 
     public function __construct()
     {
-        if (!config('laravel-tryoto.tryoto.sandbox')) {
-            $this->url = config('laravel-tryoto.tryoto.live.url');
-            $this->_token = config('laravel-tryoto.tryoto.live.token');
-            $this->_webhook = route('tryoto.callback'); // comes from package route.
-        } else {
-            $this->url = config('laravel-tryoto.tryoto.test.url');
-            $this->_token = config('laravel-tryoto.tryoto.test.token');
-            $this->_webhook = 'https://request-dinleyici-url-buraya-yazilmali';
-        }
-        $this->cacheName = config('laravel-tryoto.tryoto.cache_name');
-        $this->cacheTime = (int) config('laravel-tryoto.tryoto.cache_time');
+        $environment = config('laravel-tryoto.tryoto.sandbox') ? 'test' : 'live';
 
-        $this->accessToken = $this->authorize();
+        $this->url = rtrim((string) config("laravel-tryoto.tryoto.{$environment}.url"), '/');
+        $this->_token = (string) config("laravel-tryoto.tryoto.{$environment}.token");
+
+        // separate cache entries so switching sandbox on/off never reuses the other environment's token
+        $this->cacheName = config('laravel-tryoto.tryoto.cache_name') . ($environment === 'test' ? '_sandbox' : '');
+        $this->cacheTime = (int) config('laravel-tryoto.tryoto.cache_time');
+        $this->timeout = (int) config('laravel-tryoto.tryoto.timeout', 30);
     }
 
 
-    public function authorize(): string
+    /**
+     * Exchange the refresh token for an access token (valid 1 hour) and cache it.
+     *
+     * @return string the full Authorization header value ("Bearer ...")
+     */
+    public function authorize(bool $fresh = false): string
     {
-
-        if (Cache::has($this->cacheName)) {
-            return Cache::get($this->cacheName);
+        if ($fresh) {
+            Cache::forget($this->cacheName);
+            $this->accessToken = null;
         }
 
-        $response = Http::post($this->url . '/rest/v2/refreshToken', [
-            'refresh_token' => $this->_token,
-        ]);
+        if ($this->accessToken !== null) {
+            return $this->accessToken;
+        }
 
-        $token = 'Bearer ' . $response->json()['access_token'];
+        if (Cache::has($this->cacheName)) {
+            return $this->accessToken = Cache::get($this->cacheName);
+        }
+
+        $response = Http::acceptJson()
+            ->timeout($this->timeout)
+            ->post($this->url . '/rest/v2/refreshToken', [
+                'refresh_token' => $this->_token,
+            ]);
+
+        if (!$response->successful() || !$response->json('access_token')) {
+            throw TryotoException::authorizationFailed($response);
+        }
+
+        $token = 'Bearer ' . $response->json('access_token');
 
         Cache::put($this->cacheName, $token, now()->addMinutes($this->cacheTime));
 
-        return $token;
+        return $this->accessToken = $token;
     }
 
 
-    public function listOrders(int $page = 1, array $filters = [])
+    /**
+     * Send an authenticated request to any OTO endpoint.
+     *
+     * A 401 response refreshes the access token once and retries, so an expired cached token
+     * never surfaces to the caller.
+     *
+     * @param  string  $path  path relative to the base URL, e.g. "/rest/v2/orders"
+     * @param  array  $data  JSON body
+     * @param  array  $query  query string parameters
+     */
+    public function request(string $method, string $path, array $data = [], array $query = []): Response
     {
-        $query = array_merge([
-            'perPage' => 100,
-            'page' => $page,
-        ], array_filter($filters, static fn ($value) => $value !== null && $value !== ''));
+        $options = [];
 
-        $response = Http::withHeaders([
-            'Authorization' => $this->accessToken
-        ])
-            ->get($this->url . '/rest/v2/orders', $query);
-
-        return json_decode($response->body());
-    }
-
-
-    public function orderDetail($orderId = null)
-    {
-        if (empty($orderId)) {
-            return [];
+        $query = self::withoutEmpty($query);
+        if ($query !== []) {
+            $options['query'] = $query;
         }
 
-        $response = Http::withHeaders([
-            'Authorization' => $this->accessToken
-        ])
-            ->get($this->url . '/rest/v2/orderDetails?orderId=' . $orderId);
-
-        return json_decode($response->body(), false, 512, JSON_THROW_ON_ERROR);
-    }
-
-    public function cancelOrder($orderId)
-    {
-        if (empty($orderId)) {
-            return [];
+        if ($data !== []) {
+            $options['json'] = $data;
         }
 
-        $response = Http::withHeaders([
-            'Authorization' => $this->accessToken,
-            'Accept' => 'application/json',
-        ])
-            ->post($this->url . '/rest/v2/cancelOrder', [
-                'orderId' => $orderId
-            ]);
+        $url = $this->url . '/' . ltrim($path, '/');
 
-        return $response->json();
-    }
+        $response = $this->http()->send(strtoupper($method), $url, $options);
 
-
-    public function holdOrder($orderId, string $reason = '', string $reasonLang = 'en')
-    {
-        if (empty($orderId)) {
-            return [];
+        if ($response->status() === 401) {
+            $this->authorize(fresh: true);
+            $response = $this->http()->send(strtoupper($method), $url, $options);
         }
 
-        $response = Http::withHeaders([
-            'Authorization' => $this->accessToken,
-            'Accept' => 'application/json',
-        ])
-            ->post($this->url . '/rest/v2/holdOrder', [
-                'orderId' => $orderId,
-                'onHoldReason' => $reason,
-                'onHoldReasonLang' => $reasonLang,
-            ]);
-
-        return $response->json();
+        return $response;
     }
 
 
-    public function unHoldOrder($orderId)
+    /**
+     * Same as request(), returning the decoded JSON body as an array.
+     */
+    public function call(string $method, string $path, array $data = [], array $query = []): ?array
     {
-        if (empty($orderId)) {
-            return [];
-        }
-
-        $response = Http::withHeaders([
-            'Authorization' => $this->accessToken,
-            'Accept' => 'application/json',
-        ])
-            ->post($this->url . '/rest/v2/unHoldOrder', [
-                'orderId' => $orderId,
-            ]);
-
-        return $response->json();
+        return $this->request($method, $path, $data, $query)->json();
     }
 
 
-    public function updateOrderStatus($orderIds, string $status, string $description = '', ?string $date = null)
+    protected function http(): PendingRequest
     {
-        if (empty($orderIds) || $status === '') {
-            return [];
-        }
-
-        $body = [
-            'orderIds' => $orderIds,
-            'status' => $status,
-        ];
-
-        if ($description !== '') {
-            $body['description'] = $description;
-        }
-
-        if (!empty($date)) {
-            $body['date'] = $date;
-        }
-
-        $response = Http::withHeaders([
-            'Authorization' => $this->accessToken,
-            'Accept' => 'application/json',
-        ])
-            ->post($this->url . '/rest/v2/updateOrderStatus', $body);
-
-        return $response->json();
+        return Http::acceptJson()
+            ->timeout($this->timeout)
+            ->withHeaders(['Authorization' => $this->authorize()]);
     }
 
 
-    public function createOrder($body)
+    protected static function withoutEmpty(array $values): array
     {
-
-        $response = Http::withHeaders([
-            'Authorization' => $this->accessToken,
-            'Accept' => 'application/json',
-        ])
-            ->post($this->url . '/rest/v2/createOrder', $body);
-
-        return $response->json();
-    }
-
-
-    public function updateOrder($body)
-    {
-
-        $response = Http::withHeaders([
-            'Authorization' => $this->accessToken,
-            'Accept' => 'application/json',
-        ])
-            ->post($this->url . '/rest/v2/updateOrder', $body);
-
-        return $response->json();
-    }
-
-
-    public function setWebhook()
-    {
-        return Http::post($this->url . '/rest/v2/webhook', [
-            "method" => "post",
-            "url" => $this->_webhook,
-            "orderPrefix" => "",
-            "timestampFormat" => "yyyy-MM-dd HH:mm:ss",
-            "secretKey" => "",
-            "authorizationKey" => "",
-            "webhookType" => "orderStatus"
-        ]);
+        return array_filter($values, static fn ($value) => $value !== null && $value !== '');
     }
 
 }

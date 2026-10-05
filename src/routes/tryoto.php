@@ -6,7 +6,7 @@ use Siberfx\LaravelTryoto\app\Http\Controllers\Api\TryOtoController;
 
 Route::group(['prefix' => 'tryoto'], function () {
     Route::get('set-webhook', [TryOtoController::class, 'setWebhook'])->name('tryoto.set-webhook');
-    Route::post('webhook/callback', [TryOtoController::class, 'listenWebhook'])->name('tryoto.callback');
+    Route::match(['post', 'put'], 'webhook/callback', [TryOtoController::class, 'listenWebhook'])->name('tryoto.callback');
 
 });
 

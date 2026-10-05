@@ -3,6 +3,7 @@
 namespace Siberfx\LaravelTryoto;
 
 use Illuminate\Support\ServiceProvider;
+use Siberfx\LaravelTryoto\app\Services\TryotoService;
 
 class TryotoServiceProvider extends ServiceProvider
 {
@@ -17,6 +18,8 @@ class TryotoServiceProvider extends ServiceProvider
             __DIR__ . '/config/laravel-tryoto.php',
             'laravel-tryoto'
         );
+
+        $this->app->singleton(TryotoService::class);
     }
 
     /**

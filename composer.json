@@ -1,13 +1,17 @@
 {
     "name": "siberfx/laravel-tryoto",
     "type": "library",
-    "description": "tryoto.com unofficial api integration using laravel http client.",
+    "description": "OTO (tryoto.com) shipping API v2 integration for Laravel 12 & 13: orders, shipments, rates, tracking, returns, pickup locations, stock and webhooks.",
     "keywords": [
-        "siberfx",
+        "laravel",
         "tryoto",
+        "oto",
+        "shipping",
+        "logistics",
         "cargo integration",
         "shipment automation",
-        "shipment integration"
+        "shipment integration",
+        "siberfx"
     ],
     "homepage": "https://github.com/siberfx/laravel-tryoto",
     "license": "MIT",
@@ -19,14 +23,32 @@
             "role": "Maintainer"
         }
     ],
+    "support": {
+        "issues": "https://github.com/siberfx/laravel-tryoto/issues",
+        "source": "https://github.com/siberfx/laravel-tryoto"
+    },
     "require": {
         "php": "^8.4",
         "laravel/framework": "^12.0|^13.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^10.0|^11.0",
+        "pestphp/pest": "^3.8|^4.0",
+        "pestphp/pest-plugin-laravel": "^3.0|^4.0"
     },
     "autoload": {
         "psr-4": {
             "Siberfx\\LaravelTryoto\\": "src"
         }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Siberfx\\LaravelTryoto\\Tests\\": "tests"
+        }
+    },
+    "scripts": {
+        "test": "pest",
+        "test-coverage": "pest --coverage"
     },
     "extra": {
         "laravel": {
@@ -34,5 +56,13 @@
                 "Siberfx\\LaravelTryoto\\TryotoServiceProvider"
             ]
         }
-    }
+    },
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
 }

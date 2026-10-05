@@ -3,7 +3,9 @@
 namespace Siberfx\LaravelTryoto\app\Http\Controllers\Api;
 
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Siberfx\LaravelTryoto\app\Events\TryotoWebhookReceived;
 use Siberfx\LaravelTryoto\app\Services\TryotoService;
 
 class TryOtoController
@@ -12,7 +14,7 @@ class TryOtoController
 
     public function __construct()
     {
-        $this->service = new TryotoService;
+        $this->service = app(TryotoService::class);
     }
 
     public function auth()
@@ -58,7 +60,7 @@ class TryOtoController
 
     public function setWebhook()
     {
-        return (new TryotoService)->setWebhook();
+        return $this->service->setWebhook();
     }
 
 
@@ -116,12 +118,12 @@ class TryOtoController
             "createShipment" => false,
             "storeName" => $siteTitle,
             "payment_method" => "paid",
-            "amount" => (double)$order['amount'],
+            "amount" => (float)$order['amount'],
             "amount_due" => 0,
             "customsValue" => "12",
             "customsCurrency" => "TRY",
             "shippingAmount" => 20,
-            "subtotal" => (double)$order['sub_total'],
+            "subtotal" => (float)$order['sub_total'],
             "currency" => "TRY",
             "shippingNotes" => $order['description'],
             "packageSize" => "small",
@@ -166,35 +168,51 @@ class TryOtoController
                 "productId" => $single['productId'],
                 "name" => $single['name'],
                 "price" => $single['price'],
-                "rowTotal" => (double)$single['price'] * $single['quantity'],
-                "taxAmount" => $single['taxAmount'],
+                "rowTotal" => (float)$single['price'] * $single['quantity'],
+                "taxAmount" => $single['taxAmount'] ?? 0,
                 "quantity" => $single['quantity'],
-                "serialnumber" => $single['serialnumber'],
+                "serialnumber" => $single['serialnumber'] ?? "",
                 "sku" => $single['sku'],
-                "image" => $single['image'],
+                "image" => $single['image'] ?? "",
             ];
         }
         return $result;
     }
 
 
-    public function listenWebhook(Request $request)
+    /**
+     * Receives OTO webhook calls (orderStatus, shipmentError, newOrders, walletTransaction).
+     *
+     * When an authorization key is configured the Authorization header must match it, and when
+     * signature verification is enabled the HmacSHA256 signature must match the secret key.
+     * Accepted payloads are dispatched as a TryotoWebhookReceived event — listen to it in your app.
+     */
+    public function listenWebhook(Request $request): JsonResponse
     {
-        $orderId = $request->get('orderId');
-        $statusCode = $request->get('status');
+        $config = config('laravel-tryoto.tryoto.webhook', []);
+        $payload = $request->all();
 
-        $trackingNumber = $request->get('trackingNumber');
-        $brandedTrackingURL = $request->get('brandedTrackingURL');
-        $driverName = $request->get('driverName');
-        $driverEmail = $request->get('driverEmail');
-        $timestamp = $request->get('timestamp');
+        $authorizationKey = (string) ($config['authorization_key'] ?? '');
+        if ($authorizationKey !== '') {
+            $header = (string) $request->header('Authorization', '');
 
-
-        if (!$statusCode || !$orderId) {
-            return false;
+            if (!hash_equals($authorizationKey, $header) && !hash_equals('Bearer ' . $authorizationKey, $header)) {
+                return response()->json(['success' => false, 'message' => 'Unauthorized'], 401);
+            }
         }
 
-        // here is your code for handling the webhook response
+        if (!empty($config['verify_signature'])
+            && !TryotoService::verifyWebhookSignature($payload, (string) ($config['secret_key'] ?? ''))) {
+            return response()->json(['success' => false, 'message' => 'Invalid signature'], 401);
+        }
 
+        if (empty($payload)) {
+            return response()->json(['success' => false, 'message' => 'Empty payload'], 422);
+        }
+
+        // orderId, status, trackingNumber, brandedTrackingURL, driverName, printAWBURL, timestamp, ...
+        TryotoWebhookReceived::dispatch($payload);
+
+        return response()->json(['success' => true]);
     }
 }

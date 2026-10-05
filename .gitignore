@@ -5,3 +5,7 @@ vendor
 .superpowers
 docs
 .claude
+.phpunit.cache
+composer.lock
+.phpunit.result.cache
+coverage
